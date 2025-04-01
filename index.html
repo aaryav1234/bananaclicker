@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banana Clicker Game - Inspired</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        /* Apply the game font */
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #f5f5f5;
+            background-image: linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
+            background-size: 15px 15px;
+            overflow-x: hidden;
+        }
+
+        /* General container styling */
+        .game-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            max-width: 1000px;
+            margin: 1rem auto;
+            padding: 1rem;
+            background-color: rgba(255, 255, 255, 0.6);
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 1px solid #ddd;
+        }
+
+        /* Left column (Banana) */
+        .left-column {
+            flex: 1;
+            min-width: 250px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1rem;
+            background-color: #fff8e1;
+            border-radius: 8px;
+            border: 1px solid #ffe082;
+            position: relative; /* Needed for positioning particles */
+        }
+
+        /* Right column (Store) */
+        .right-column {
+            flex: 1;
+            min-width: 300px;
+            padding: 1rem;
+            background-color: #e3f2fd;
+            border-radius: 8px;
+            border: 1px solid #90caf9;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        /* Style for the 3D canvas container - REMOVED BORDER/SHADOW */
+        #bananaCanvasContainer {
+            width: 100%;
+            max-width: 300px;
+            height: 250px;
+            margin: 1rem auto;
+            cursor: pointer;
+            border-radius: 0.5rem; /* Keep rounded corners */
+            overflow: hidden; /* Still needed to clip canvas */
+            background-color: #81d4fa; /* Keep background for contrast */
+            position: relative;
+        }
+         #bananaCanvasContainer canvas {
+             display: block;
+         }
+
+        /* Style for building/upgrade items in the store */
+        .building-item {
+            background-color: white;
+            border: 1px solid #ccc;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+            cursor: pointer;
+        }
+        .building-item:hover:not(.disabled) {
+            background-color: #f1f8e9;
+            border-color: #a5d6a7;
+        }
+        .building-item.disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background-color: #eeeeee;
+        }
+        .building-info { flex-grow: 1; margin-right: 1rem; }
+        .building-name { font-size: 1rem; font-weight: bold; color: #333; }
+        .building-cost, .building-cps { font-size: 0.8rem; color: #555; }
+        .building-count { font-size: 1.5rem; font-weight: bold; color: #0d47a1; min-width: 40px; text-align: right; }
+
+        /* Style for the banana particle effect */
+        .banana-particle {
+            position: absolute; /* Positioned relative to left-column */
+            font-size: 1rem; /* Size of the emoji */
+            pointer-events: none; /* Don't interfere with clicks */
+            animation: flyOut 1.2s ease-out forwards;
+            z-index: 10;
+            /* Prevent text selection */
+             user-select: none;
+            -webkit-user-select: none; /* Safari */
+            -moz-user-select: none; /* Firefox */
+            -ms-user-select: none; /* IE10+/Edge */
+        }
+
+        @keyframes flyOut {
+            0% {
+                opacity: 1;
+                transform: translate(0, 0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                /* Fly outwards in a random direction */
+                transform: translate(var(--tx, 0px), var(--ty, -80px)) scale(0.5);
+            }
+        }
+
+        /* Style for message display */
+        #messageBox {
+             min-height: 1.5rem;
+             transition: opacity 0.5s ease-out;
+             margin-top: 1rem;
+             font-size: 0.9rem;
+             text-align: center;
+        }
+
+        /* Section Titles */
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            text-align: center;
+            color: #555;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 0.5rem;
+        }
+
+    </style>
+</head>
+<body class="text-gray-800">
+    <div class="game-container">
+        <div class="left-column" id="leftColumn">
+            <h1 class="text-2xl mb-2 text-yellow-600">Banana Clicker!</h1>
+            <div class="mb-2 text-center">
+                <p class="text-lg">Bananas:</p>
+                <p id="scoreDisplay" class="text-4xl font-bold text-green-600">0</p>
+            </div>
+            <div class="mb-4 text-center">
+                <p class="text-sm">Bananas Per Second:</p>
+                <p id="cpsDisplay" class="text-lg font-bold text-blue-600">0</p>
+            </div>
+            <div id="bananaCanvasContainer">
+            </div>
+             <div class="w-full max-w-xs mt-4">
+                 <button id="upgradeClickPower" class="building-item w-full">
+                     <div class="building-info">
+                        <div class="building-name">✋ Sharpen Peel</div>
+                        <div class="building-cost">Cost: <span id="clickPowerCost">10</span></div>
+                        <div class="building-cps">+<span id="clickPowerIncrease">1</span> per click</div>
+                    </div>
+                 </button>
+                 <button id="upgradeCritChance" class="building-item w-full">
+                     <div class="building-info">
+                        <div class="building-name">🍀 Lucky Peel</div>
+                        <div class="building-cost">Cost: <span id="critChanceCost">100</span></div>
+                        <div class="building-cps">+<span id="critChanceIncrease">1</span>% Crit Chance</div>
+                    </div>
+                 </button>
+                 <button id="upgradeCritDamage" class="building-item w-full">
+                     <div class="building-info">
+                        <div class="building-name">💥 Super Peel</div>
+                        <div class="building-cost">Cost: <span id="critDamageCost">500</span></div>
+                        <div class="building-cps">+<span id="critDamageIncrease">0.5</span>x Crit Damage</div>
+                    </div>
+                 </button>
+             </div>
+              <div id="messageBox" class="text-red-600 font-bold">
+                 </div>
+        </div>
+        <div class="right-column">
+            <h2 class="section-title text-blue-800">Store</h2>
+            <div id="storeContainer">
+                </div>
+        </div>
+    </div>
+    <script>
+        // --- Game State Variables ---
+        let score = 0;
+        let clickPower = 1;
+        let clickPowerCost = 10;
+        let clickPowerIncrease = 1;
+        let critChance = 0;
+        let critChanceCost = 100;
+        let critChanceIncrease = 1;
+        let critDamage = 2;
+        let critDamageCost = 500;
+        let critDamageIncrease = 0.5;
+        const costIncreaseMultiplier = 1.15;
+
+        // --- Buildings Data ---
+        const buildings = [
+            { id: 'tree', name: '🌳 Banana Tree', baseCost: 15, baseCps: 0.1, count: 0, currentCost: 15 },
+            { id: 'jungle', name: '🌴 Banana Jungle', baseCost: 100, baseCps: 1, count: 0, currentCost: 100 },
+            { id: 'monkey', name: '🐒 Monkey Helper', baseCost: 500, baseCps: 5, count: 0, currentCost: 500 },
+            { id: 'factory', name: '🏭 Banana Factory', baseCost: 3000, baseCps: 25, count: 0, currentCost: 3000 },
+            { id: 'shipment', name: '🚀 Banana Shipment', baseCost: 10000, baseCps: 100, count: 0, currentCost: 10000 }
+        ];
+
+        // --- DOM Elements ---
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const cpsDisplay = document.getElementById('cpsDisplay');
+        const messageBox = document.getElementById('messageBox');
+        const bananaCanvasContainer = document.getElementById('bananaCanvasContainer');
+        const storeContainer = document.getElementById('storeContainer');
+        const upgradeClickPowerButton = document.getElementById('upgradeClickPower');
+        const clickPowerCostDisplay = document.getElementById('clickPowerCost');
+        const clickPowerIncreaseDisplay = document.getElementById('clickPowerIncrease');
+        const upgradeCritChanceButton = document.getElementById('upgradeCritChance');
+        const critChanceCostDisplay = document.getElementById('critChanceCost');
+        const critChanceIncreaseDisplay = document.getElementById('critChanceIncrease');
+        const upgradeCritDamageButton = document.getElementById('upgradeCritDamage');
+        const critDamageCostDisplay = document.getElementById('critDamageCost');
+        const critDamageIncreaseDisplay = document.getElementById('critDamageIncrease');
+        const leftColumn = document.getElementById('leftColumn'); // Get left column for particle positioning
+
+        // --- Three.js Setup ---
+        let scene, camera, renderer, bananaMesh;
+
+        function initThreeJS() {
+            scene = new THREE.Scene();
+            const containerWidth = bananaCanvasContainer.clientWidth;
+            const containerHeight = bananaCanvasContainer.clientHeight;
+
+            camera = new THREE.PerspectiveCamera(75, containerWidth / containerHeight, 0.1, 1000);
+            camera.position.z = 3; // Move camera slightly closer for LatheGeometry
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(containerWidth, containerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            bananaCanvasContainer.appendChild(renderer.domElement);
+
+            // --- Improved Banana Geometry (LatheGeometry) ---
+            const points = [];
+            // Define the 2D profile of the banana (half-slice)
+            // Adjust these points to refine the shape
+            points.push(new THREE.Vector2(0, -1.5)); // Bottom tip
+            points.push(new THREE.Vector2(0.4, -1.4)); // Curve start
+            points.push(new THREE.Vector2(0.6, 0)); // Middle bulge
+            points.push(new THREE.Vector2(0.35, 1.4)); // Curve end
+            points.push(new THREE.Vector2(0, 1.5)); // Top tip
+
+            // Create the geometry by revolving the points
+            // Parameters: points, segments (smoothness), phiStart, phiLength
+            const geometry = new THREE.LatheGeometry(points, 20, 0, Math.PI * 2);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xFFE042, // Banana yellow
+                roughness: 0.7,
+                metalness: 0.1,
+                side: THREE.DoubleSide // Render both sides in case profile isn't perfect
+             });
+            bananaMesh = new THREE.Mesh(geometry, material);
+            bananaMesh.scale.set(0.8, 0.8, 0.8); // Adjust scale if needed
+            bananaMesh.rotation.x = Math.PI / 16; // Slight initial tilt
+            scene.add(bananaMesh);
+            // --- End of Banana Geometry ---
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            animate();
+            renderer.domElement.addEventListener('click', handleCanvasClick);
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        // --- Animation ---
+        function animate() {
+            requestAnimationFrame(animate);
+            if (bananaMesh) {
+                bananaMesh.rotation.y += 0.015; // Keep rotating
+            }
+            renderer.render(scene, camera);
+        }
+
+        // --- Handle Window Resize ---
+        function onWindowResize() {
+             const containerWidth = bananaCanvasContainer.clientWidth;
+             const containerHeight = bananaCanvasContainer.clientHeight;
+
+             if (containerWidth > 0 && containerHeight > 0) {
+                 camera.aspect = containerWidth / containerHeight;
+                 camera.updateProjectionMatrix();
+                 renderer.setSize(containerWidth, containerHeight);
+             }
+        }
+
+        // --- Game Logic Functions ---
+
+        function calculateTotalCps() {
+            let totalCps = 0;
+            buildings.forEach(building => { totalCps += building.count * building.baseCps; });
+            return parseFloat(totalCps.toFixed(1));
+        }
+
+        // Function to handle clicking the BANANA (canvas)
+        function handleCanvasClick(event) {
+            let clickAmount = clickPower;
+            if (Math.random() * 100 < critChance) {
+                clickAmount *= critDamage;
+                showMessage("Critical Hit!", false, 1500);
+            }
+            // Create banana particle effect instead of floating number
+            createBananaParticles(clickAmount, event.clientX, event.clientY);
+
+             // Optional: visual feedback on the 3D model
+            if (bananaMesh) {
+                 bananaMesh.scale.set(0.85, 0.85, 0.85);
+                 setTimeout(() => {
+                     if (bananaMesh) bananaMesh.scale.set(0.8, 0.8, 0.8);
+                 }, 80);
+            }
+
+            // Grant score
+            score += clickAmount;
+            updateDisplay();
+        }
+
+        // Function to create the flying banana particle effect
+        function createBananaParticles(count, clickX, clickY) {
+            const containerRect = leftColumn.getBoundingClientRect(); // Use left column for positioning
+
+            for (let i = 0; i < count; i++) {
+                const particle = document.createElement('div');
+                particle.classList.add('banana-particle');
+                particle.textContent = '🍌'; // Banana emoji
+
+                // Calculate starting position relative to the left column
+                const startX = clickX - containerRect.left;
+                const startY = clickY - containerRect.top;
+
+                particle.style.left = `${startX}px`;
+                particle.style.top = `${startY}px`;
+
+                // Randomize animation direction (using CSS variables)
+                const angle = Math.random() * Math.PI * 2; // Random angle
+                const distance = 60 + Math.random() * 40; // Random distance (60-100px)
+                const translateX = Math.cos(angle) * distance;
+                const translateY = Math.sin(angle) * distance - 80; // Add upward bias
+
+                particle.style.setProperty('--tx', `${translateX}px`);
+                particle.style.setProperty('--ty', `${translateY}px`);
+
+                leftColumn.appendChild(particle); // Append to left column
+
+                // Remove the particle after animation
+                setTimeout(() => {
+                    particle.remove();
+                }, 1200); // Match animation duration
+            }
+        }
+
+        // Function to update the score, CPS, costs, and store display
+        function updateDisplay() {
+            scoreDisplay.textContent = Math.floor(score);
+            cpsDisplay.textContent = calculateTotalCps();
+
+            // Update click power upgrade display
+            clickPowerCostDisplay.textContent = Math.ceil(clickPowerCost);
+            clickPowerIncreaseDisplay.textContent = clickPowerIncrease;
+            upgradeClickPowerButton.classList.toggle('disabled', score < clickPowerCost);
+            if (score < clickPowerCost) {
+                 upgradeClickPowerButton.removeEventListener('click', buyClickPower);
+            } else {
+                 upgradeClickPowerButton.removeEventListener('click', buyClickPower);
+                 upgradeClickPowerButton.addEventListener('click', buyClickPower);
+            }
+
+            // Update crit chance upgrade display
+            critChanceCostDisplay.textContent = Math.ceil(critChanceCost);
+            critChanceIncreaseDisplay.textContent = critChanceIncrease;
+            upgradeCritChanceButton.classList.toggle('disabled', score < critChanceCost);
+            if (score < critChanceCost) {
+                 upgradeCritChanceButton.removeEventListener('click', buyCritChance);
+            } else {
+                 upgradeCritChanceButton.removeEventListener('click', buyCritChance);
+                 upgradeCritChanceButton.addEventListener('click', buyCritChance);
+            }
+
+            // Update crit damage upgrade display
+            critDamageCostDisplay.textContent = Math.ceil(critDamageCost);
+            critDamageIncreaseDisplay.textContent = critDamageIncrease;
+            upgradeCritDamageButton.classList.toggle('disabled', score < critDamageCost);
+            if (score < critDamageCost) {
+                 upgradeCritDamageButton.removeEventListener('click', buyCritDamage);
+            } else {
+                 upgradeCritDamageButton.removeEventListener('click', buyCritDamage);
+                 upgradeCritDamageButton.addEventListener('click', buyCritDamage);
+            }
+
+            renderStore();
+        }
+
+        // Function to render the building items in the store
+        function renderStore() {
+            storeContainer.innerHTML = '';
+            buildings.forEach(building => {
+                const item = document.createElement('div');
+                item.classList.add('building-item');
+                item.classList.toggle('disabled', score < building.currentCost);
+                item.dataset.buildingId = building.id;
+
+                item.innerHTML = `
+                    <div class="building-info">
+                        <div class="building-name">${building.name}</div>
+                        <div class="building-cost">Cost: ${Math.ceil(building.currentCost)}</div>
+                        <div class="building-cps">+${building.baseCps} BPS each</div>
+                    </div>
+                    <div class="building-count">${building.count}</div>
+                `;
+
+                // Add click listener only if not disabled
+                if (score >= building.currentCost) {
+                    item.addEventListener('click', () => buyBuilding(building.id));
+                }
+                storeContainer.appendChild(item);
+            });
+        }
+
+        // Function to display messages
+        function showMessage(message, isError = false, duration = 2000) {
+            messageBox.textContent = message;
+            messageBox.style.color = isError ? '#dc2626' : '#16a34a';
+            messageBox.style.opacity = 1;
+            setTimeout(() => {
+                 messageBox.style.opacity = 0;
+                 setTimeout(() => { messageBox.textContent = ''; }, 500);
+            }, duration);
+        }
+
+        // --- Buy Logic ---
+        function buyClickPower() {
+            if (score >= clickPowerCost) {
+                score -= clickPowerCost;
+                clickPower += clickPowerIncrease;
+                clickPowerCost = Math.ceil(clickPowerCost * 1.25);
+                showMessage(`Click power increased to ${clickPower}!`, false);
+                updateDisplay();
+            } else {
+                 showMessage("Not enough bananas!", true);
+                 upgradeClickPowerButton.classList.add('disabled');
+                 upgradeClickPowerButton.removeEventListener('click', buyClickPower);
+            }
+        }
+
+        function buyCritChance() {
+            if (score >= critChanceCost) {
+                score -= critChanceCost;
+                critChance += critChanceIncrease;
+                critChanceCost = Math.ceil(critChanceCost * 1.3);
+                showMessage(`Crit chance increased to ${critChance}%!`, false);
+                updateDisplay();
+            } else {
+                 showMessage("Not enough bananas!", true);
+                 upgradeCritChanceButton.classList.add('disabled');
+                 upgradeCritChanceButton.removeEventListener('click', buyCritChance);
+            }
+        }
+
+        function buyCritDamage() {
+            if (score >= critDamageCost) {
+                score -= critDamageCost;
+                critDamage += critDamageIncrease;
+                critDamageCost = Math.ceil(critDamageCost * 1.4);
+                showMessage(`Crit damage increased to ${critDamage}x!`, false);
+                updateDisplay();
+            } else {
+                 showMessage("Not enough bananas!", true);
+                 upgradeCritDamageButton.classList.add('disabled');
+                 upgradeCritDamageButton.removeEventListener('click', buyCritDamage);
+            }
+        }
+
+        function buyBuilding(buildingId) {
+            const building = buildings.find(b => b.id === buildingId);
+            if (!building) return;
+
+            if (score >= building.currentCost) {
+                score -= building.currentCost;
+                building.count++;
+                building.currentCost = Math.ceil(building.baseCost * Math.pow(costIncreaseMultiplier, building.count));
+                showMessage(`Bought ${building.name}!`, false);
+                updateDisplay();
+            } else {
+                 showMessage("Not enough bananas!", true);
+                 renderStore();
+            }
+        }
+
+        // --- Auto Gain Interval ---
+        function autoGainBananas() {
+            const cps = calculateTotalCps();
+            if (cps > 0) {
+                 score += cps / 10;
+                 updateDisplay();
+            }
+        }
+        setInterval(autoGainBananas, 100);
+
+        // --- Event Listeners ---
+        // Click power listener is managed in updateDisplay
+        // Store item listeners are added dynamically in renderStore()
+
+        // --- Initialization ---
+        window.onload = () => {
+             initThreeJS();
+             updateDisplay(); // Initial display update & store render
+        };
+    </script>
+</body>
+</html>
